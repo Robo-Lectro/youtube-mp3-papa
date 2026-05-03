@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-13
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
@@ -38,6 +38,7 @@ jobs:
             --onefile \
             --windowed \
             --name "YouTube-MP3-Papa" \
+            --target-arch x86_64 \
             --add-binary "yt-dlp:." \
             --add-binary "ffmpeg:." \
             main_mac.py
