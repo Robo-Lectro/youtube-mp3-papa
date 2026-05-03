@@ -3,15 +3,13 @@ from tkinter import ttk, filedialog, messagebox
 import threading
 import os
 import sys
-import subprocess
-import re
+import yt_dlp
 
 def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
 
-YT_DLP = resource_path("yt-dlp")
 FFMPEG = resource_path("ffmpeg")
 
 BG = "#0f0f0f"
@@ -23,6 +21,20 @@ ACCENT = "#ff4d00"
 ACCENT2 = "#ff8c42"
 SUCCESS = "#4caf50"
 ERROR = "#f44336"
+
+class TkLogger:
+    def __init__(self, app):
+        self.app = app
+
+    def debug(self, msg):
+        if msg.strip():
+            self.app.after(0, self.app._log, msg)
+
+    def warning(self, msg):
+        self.app.after(0, self.app._log, "WARNING: " + msg)
+
+    def error(self, msg):
+        self.app.after(0, self.app._log, "ERROR: " + msg)
 
 class App(tk.Tk):
     def __init__(self):
@@ -46,21 +58,8 @@ class App(tk.Tk):
         header = tk.Frame(self, bg=BG)
         header.pack(fill="x", padx=30, pady=(28, 0))
 
-        tk.Label(
-            header,
-            text="YouTube → MP3",
-            font=("Helvetica", 22, "bold"),
-            bg=BG,
-            fg=TEXT
-        ).pack(anchor="w")
-
-        tk.Label(
-            header,
-            text="Audio MP3 320 kbps | Simple pour Papa",
-            font=("Helvetica", 10),
-            bg=BG,
-            fg=SUBTEXT
-        ).pack(anchor="w", pady=(4, 0))
+        tk.Label(header, text="YouTube → MP3", font=("Helvetica", 22, "bold"), bg=BG, fg=TEXT).pack(anchor="w")
+        tk.Label(header, text="Audio MP3 320 kbps | Simple pour Papa", font=("Helvetica", 10), bg=BG, fg=SUBTEXT).pack(anchor="w", pady=(4, 0))
 
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x", padx=30, pady=18)
 
@@ -71,13 +70,7 @@ class App(tk.Tk):
         inner.pack(fill="x", padx=22, pady=22)
         inner.columnconfigure(0, weight=1)
 
-        tk.Label(
-            inner,
-            text="Lien YouTube",
-            font=("Helvetica", 10, "bold"),
-            bg=CARD,
-            fg=SUBTEXT
-        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        tk.Label(inner, text="Lien YouTube", font=("Helvetica", 10, "bold"), bg=CARD, fg=SUBTEXT).grid(row=0, column=0, sticky="w", pady=(0, 4))
 
         self.url_entry = tk.Entry(
             inner,
@@ -91,19 +84,13 @@ class App(tk.Tk):
         )
         self.url_entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 16))
 
-        tk.Label(
-            inner,
-            text="Dossier de destination",
-            font=("Helvetica", 10, "bold"),
-            bg=CARD,
-            fg=SUBTEXT
-        ).grid(row=2, column=0, sticky="w", pady=(0, 4))
+        tk.Label(inner, text="Dossier de destination", font=("Helvetica", 10, "bold"), bg=CARD, fg=SUBTEXT).grid(row=2, column=0, sticky="w", pady=(0, 4))
 
         dir_row = tk.Frame(inner, bg=CARD)
         dir_row.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 20))
         dir_row.columnconfigure(0, weight=1)
 
-        self.dir_label = tk.Label(
+        tk.Label(
             dir_row,
             textvariable=self.output_dir,
             font=("Helvetica", 9),
@@ -112,10 +99,9 @@ class App(tk.Tk):
             anchor="w",
             padx=10,
             pady=10
-        )
-        self.dir_label.grid(row=0, column=0, sticky="ew")
+        ).grid(row=0, column=0, sticky="ew")
 
-        self.choose_btn = tk.Button(
+        tk.Button(
             dir_row,
             text="Choisir...",
             command=self._browse,
@@ -129,8 +115,7 @@ class App(tk.Tk):
             padx=16,
             pady=8,
             cursor="hand2"
-        )
-        self.choose_btn.grid(row=0, column=1, padx=(10, 0))
+        ).grid(row=0, column=1, padx=(10, 0))
 
         self.dl_btn = tk.Button(
             inner,
@@ -160,38 +145,15 @@ class App(tk.Tk):
             thickness=10
         )
 
-        self.pbar = ttk.Progressbar(
-            self,
-            style="fire.Horizontal.TProgressbar",
-            variable=self.progress,
-            maximum=100
-        )
-        self.pbar.pack(fill="x", padx=30, pady=(18, 0))
+        ttk.Progressbar(self, style="fire.Horizontal.TProgressbar", variable=self.progress, maximum=100).pack(fill="x", padx=30, pady=(18, 0))
 
-        self.status_lbl = tk.Label(
-            self,
-            textvariable=self.status_var,
-            font=("Helvetica", 9),
-            bg=BG,
-            fg=SUBTEXT,
-            anchor="w"
-        )
+        self.status_lbl = tk.Label(self, textvariable=self.status_var, font=("Helvetica", 9), bg=BG, fg=SUBTEXT, anchor="w")
         self.status_lbl.pack(fill="x", padx=32, pady=(6, 0))
 
         log_frame = tk.Frame(self, bg=CARD, highlightthickness=1, highlightbackground=BORDER)
         log_frame.pack(fill="both", expand=True, padx=30, pady=(10, 24))
 
-        self.log = tk.Text(
-            log_frame,
-            height=8,
-            font=("Courier", 8),
-            bg="#0a0a0a",
-            fg=SUBTEXT,
-            relief="flat",
-            bd=8,
-            state="disabled",
-            wrap="word"
-        )
+        self.log = tk.Text(log_frame, height=8, font=("Courier", 8), bg="#0a0a0a", fg=SUBTEXT, relief="flat", bd=8, state="disabled", wrap="word")
         self.log.pack(fill="both", expand=True)
 
     def _add_context_menu(self):
@@ -202,15 +164,15 @@ class App(tk.Tk):
 
         self.url_entry.bind("<Button-2>", self._show_context_menu)
         self.url_entry.bind("<Button-3>", self._show_context_menu)
-        self.url_entry.bind("<Control-v>", lambda e: self.url_entry.event_generate("<<Paste>>"))
         self.url_entry.bind("<Command-v>", lambda e: self.url_entry.event_generate("<<Paste>>"))
+        self.url_entry.bind("<Control-v>", lambda e: self.url_entry.event_generate("<<Paste>>"))
 
     def _show_context_menu(self, event):
         self.context_menu.tk_popup(event.x_root, event.y_root)
 
     def _log(self, msg):
         self.log.config(state="normal")
-        self.log.insert("end", msg + "\n")
+        self.log.insert("end", str(msg) + "\n")
         self.log.see("end")
         self.log.config(state="disabled")
 
@@ -219,43 +181,31 @@ class App(tk.Tk):
         self.status_lbl.config(fg=color)
 
     def _browse(self):
-        folder = filedialog.askdirectory(
-            title="Choisir le dossier de destination",
-            initialdir=self.output_dir.get()
-        )
+        folder = filedialog.askdirectory(title="Choisir le dossier de destination", initialdir=self.output_dir.get())
         if folder:
             self.output_dir.set(folder)
 
     def _check_deps(self):
-        missing = []
-        if not os.path.exists(YT_DLP):
-            missing.append("yt-dlp")
         if not os.path.exists(FFMPEG):
-            missing.append("ffmpeg")
+            messagebox.showerror("Dépendance manquante", "ffmpeg est manquant dans l'application.")
+            self._set_status("ffmpeg manquant.", ERROR)
+            return
 
-        if missing:
-            messagebox.showerror(
-                "Dépendances manquantes",
-                f"Fichiers manquants : {', '.join(missing)}"
-            )
-            self._set_status("Fichiers manquants.", ERROR)
+        try:
+            os.chmod(FFMPEG, 0o755)
+            self._log(f"ffmpeg trouvé: {FFMPEG}")
+            self._log("yt-dlp utilisé comme module Python.")
+        except Exception as e:
+            self._log(f"Erreur chmod ffmpeg: {e}")
 
     def _start_download(self):
         if self._running:
             return
 
         url = self.url_var.get().strip()
-
         if not url:
             messagebox.showwarning("URL manquante", "Colle un lien YouTube dans le champ.")
             return
-
-        if "youtube.com" not in url and "youtu.be" not in url:
-            if not messagebox.askyesno(
-                "URL inhabituelle",
-                "Le lien ne semble pas être YouTube. Continuer quand même?"
-            ):
-                return
 
         out_dir = self.output_dir.get()
         os.makedirs(out_dir, exist_ok=True)
@@ -267,123 +217,70 @@ class App(tk.Tk):
 
         threading.Thread(target=self._download_worker, args=(url, out_dir), daemon=True).start()
 
-    def _run_version_test(self, binary, args):
-        try:
-            result = subprocess.run(
-                [binary] + args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=10
-            )
-            return result.returncode, result.stdout.strip()
-        except Exception as e:
-            return -1, str(e)
+    def _hook(self, d):
+        status = d.get("status")
+
+        if status == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes") or 0
+
+            if total > 0:
+                pct = downloaded / total * 100
+                self.after(0, self.progress.set, pct)
+                self.after(0, self._set_status, f"Téléchargement : {pct:.1f}%")
+
+        elif status == "finished":
+            self.after(0, self.progress.set, 95)
+            self.after(0, self._set_status, "Conversion en MP3...", ACCENT2)
+            self.after(0, self._log, "Téléchargement terminé, conversion en MP3...")
 
     def _download_worker(self, url, out_dir):
         try:
+            os.chmod(FFMPEG, 0o755)
+
+            self.after(0, self._log, "-" * 55)
             self.after(0, self._log, f"URL : {url}")
             self.after(0, self._log, f"Dossier : {out_dir}")
+            self.after(0, self._log, f"ffmpeg : {FFMPEG}")
+            self.after(0, self._log, "yt-dlp : module Python")
             self.after(0, self._log, "-" * 55)
 
-            yt = YT_DLP
-            ff = FFMPEG
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "outtmpl": os.path.join(out_dir, "%(title)s.%(ext)s"),
+                "ffmpeg_location": os.path.dirname(FFMPEG),
+                "noplaylist": True,
+                "quiet": False,
+                "no_warnings": False,
+                "logger": TkLogger(self),
+                "progress_hooks": [self._hook],
+                "force_ipv4": True,
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "320",
+                    },
+                    {
+                        "key": "FFmpegMetadata",
+                    },
+                ],
+            }
 
-            for binary in [yt, ff]:
-                if os.path.exists(binary):
-                    os.chmod(binary, 0o755)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
 
-            self.after(0, self._log, f"yt-dlp path : {yt}")
-            self.after(0, self._log, f"ffmpeg path : {ff}")
-            self.after(0, self._log, f"yt-dlp existe : {os.path.exists(yt)}")
-            self.after(0, self._log, f"ffmpeg existe : {os.path.exists(ff)}")
-
-            yt_code, yt_version = self._run_version_test(yt, ["--version"])
-            ff_code, ff_version = self._run_version_test(ff, ["-version"])
-
-            self.after(0, self._log, f"yt-dlp test code : {yt_code}")
-            self.after(0, self._log, yt_version.splitlines()[0] if yt_version else "yt-dlp aucune sortie")
-
-            self.after(0, self._log, f"ffmpeg test code : {ff_code}")
-            self.after(0, self._log, ff_version.splitlines()[0] if ff_version else "ffmpeg aucune sortie")
-
-            if yt_code != 0:
-                raise RuntimeError("Erreur 255 possible : yt-dlp ne peut pas s'exécuter sur ce Mac.")
-
-            if ff_code != 0:
-                raise RuntimeError("Erreur 255 possible : ffmpeg ne peut pas s'exécuter sur ce Mac.")
-
-            cmd = [
-                yt,
-                "--ffmpeg-location", os.path.dirname(ff),
-                "--force-ipv4",
-                "-x",
-                "--audio-format", "mp3",
-                "--audio-quality", "0",
-                "--embed-thumbnail",
-                "--add-metadata",
-                "--no-playlist",
-                "--newline",
-                "-o", os.path.join(out_dir, "%(title)s.%(ext)s"),
-                url
-            ]
-
-            self.after(0, self._log, "-" * 55)
-            self.after(0, self._log, "Commande lancée.")
-            self.after(0, self._set_status, "Téléchargement...")
-
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace"
-            )
-
-            for line in proc.stdout:
-                line = line.rstrip()
-                if not line:
-                    continue
-
-                self.after(0, self._log, line)
-
-                m = re.search(r"\[download\]\s+([\d.]+)%", line)
-                if m:
-                    pct = float(m.group(1))
-                    self.after(0, self.progress.set, pct)
-                    self.after(0, self._set_status, f"Téléchargement : {pct:.1f}%")
-
-                if "[ExtractAudio]" in line or "Destination" in line:
-                    self.after(0, self._set_status, "Conversion en MP3...", ACCENT2)
-                    self.after(0, self.progress.set, 95)
-
-            proc.wait()
-
-            if proc.returncode == 0:
-                self.after(0, self.progress.set, 100)
-                self.after(0, self._set_status, "Téléchargement terminé.", SUCCESS)
-                self.after(0, self._log, f"MP3 sauvegardé dans : {out_dir}")
-                self.after(0, lambda: messagebox.showinfo(
-                    "Terminé",
-                    f"La musique a été téléchargée.\n\nDossier : {out_dir}"
-                ))
-            elif proc.returncode == 255:
-                raise RuntimeError(
-                    "yt-dlp a retourné le code 255. "
-                    "Cause probable sur Mac : ffmpeg/yt-dlp bloqué, non exécutable, "
-                    "mauvaise architecture, ou app bloquée par macOS Gatekeeper."
-                )
-            else:
-                raise RuntimeError(f"yt-dlp a retourné le code {proc.returncode}")
+            self.after(0, self.progress.set, 100)
+            self.after(0, self._set_status, "Téléchargement terminé.", SUCCESS)
+            self.after(0, self._log, f"MP3 sauvegardé dans : {out_dir}")
+            self.after(0, lambda: messagebox.showinfo("Terminé", f"La musique a été téléchargée.\n\nDossier : {out_dir}"))
 
         except Exception as e:
-            self.after(0, self._set_status, f"Erreur : {e}", ERROR)
+            msg = str(e)
+            self.after(0, self._set_status, f"Erreur : {msg}", ERROR)
             self.after(0, self._log, "")
-            self.after(0, self._log, f"ERREUR : {e}")
-            self.after(0, lambda: messagebox.showerror("Erreur", str(e)))
+            self.after(0, self._log, f"ERREUR : {msg}")
+            self.after(0, lambda: messagebox.showerror("Erreur", msg))
         finally:
             self.after(0, self._reset_ui)
 
@@ -392,5 +289,4 @@ class App(tk.Tk):
         self.dl_btn.config(state="normal", text="TÉLÉCHARGER EN MP3")
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    App().mainloop()
