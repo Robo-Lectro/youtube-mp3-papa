@@ -1,0 +1,55 @@
+name: Build Mac App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Download yt-dlp (Mac)
+        run: |
+          curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" -o yt-dlp
+          chmod +x yt-dlp
+
+      - name: Download ffmpeg (Mac)
+        run: |
+          brew install ffmpeg
+          cp $(which ffmpeg) ./ffmpeg
+          chmod +x ffmpeg
+
+      - name: Build .app with PyInstaller
+        run: |
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --name "YouTube-MP3-Papa" \
+            --add-binary "yt-dlp:." \
+            --add-binary "ffmpeg:." \
+            main_mac.py
+
+      - name: Zip the .app
+        run: |
+          cd dist
+          zip -r YouTube-MP3-Papa-Mac.zip "YouTube-MP3-Papa.app"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YouTube-MP3-Papa-Mac
+          path: dist/YouTube-MP3-Papa-Mac.zip
+          retention-days: 30
