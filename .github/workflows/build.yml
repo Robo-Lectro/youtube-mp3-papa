@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-latest
+    runs-on: macos-13
 
     steps:
       - name: Checkout code
@@ -19,18 +19,24 @@ jobs:
           python-version: '3.11'
 
       - name: Install PyInstaller
-        run: pip install pyinstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
 
-      - name: Download yt-dlp (Mac)
+      - name: Download yt-dlp Mac
         run: |
           curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" -o yt-dlp
           chmod +x yt-dlp
+          ./yt-dlp --version
+          file yt-dlp
 
-      - name: Download ffmpeg (Mac)
+      - name: Download static ffmpeg Mac
         run: |
-          brew install ffmpeg
-          cp $(which ffmpeg) ./ffmpeg
+          curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o ffmpeg.zip
+          unzip -o ffmpeg.zip
           chmod +x ffmpeg
+          ./ffmpeg -version
+          file ffmpeg
 
       - name: Build .app with PyInstaller
         run: |
@@ -38,15 +44,46 @@ jobs:
             --onefile \
             --windowed \
             --name "YouTube-MP3-Papa" \
-            --target-arch x86_64 \
             --add-binary "yt-dlp:." \
             --add-binary "ffmpeg:." \
             main_mac.py
 
-      - name: Zip the .app
+      - name: Create fix.command
+        run: |
+          mkdir -p dist/YouTube-MP3-Papa-Mac
+          mv "dist/YouTube-MP3-Papa.app" "dist/YouTube-MP3-Papa-Mac/"
+          cat > "dist/YouTube-MP3-Papa-Mac/fix.command" << 'EOF'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          xattr -rd com.apple.quarantine "YouTube-MP3-Papa.app"
+          chmod +x "YouTube-MP3-Papa.app/Contents/MacOS/YouTube-MP3-Papa"
+          echo "App débloquée."
+          echo "Tu peux maintenant ouvrir YouTube-MP3-Papa.app"
+          read -p "Appuie sur Entrée pour fermer..."
+          EOF
+          chmod +x "dist/YouTube-MP3-Papa-Mac/fix.command"
+
+      - name: Create README
+        run: |
+          cat > "dist/YouTube-MP3-Papa-Mac/README.txt" << 'EOF'
+          YouTube-MP3-Papa - Installation Mac
+
+          1. Ouvre le fichier fix.command une première fois.
+          2. Ensuite ouvre YouTube-MP3-Papa.app.
+          3. Colle un lien YouTube.
+          4. Choisis le dossier de destination.
+          5. Clique sur TÉLÉCHARGER EN MP3.
+
+          Si macOS bloque l'app :
+          - clic droit sur fix.command
+          - Ouvrir
+          - ensuite relancer l'app
+          EOF
+
+      - name: Zip the app folder
         run: |
           cd dist
-          zip -r YouTube-MP3-Papa-Mac.zip "YouTube-MP3-Papa.app"
+          zip -r YouTube-MP3-Papa-Mac.zip "YouTube-MP3-Papa-Mac"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
